@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mount Popa NISAR & Sentinel-1 SAR Multi-Temporal Radar Viewer</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Chart.js for Profile Analysis -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #090d16;
+            color: #cbd5e1;
+            overflow-x: hidden;
+        }
+
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+
+        /* Glassmorphism Panel */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(51, 65, 85, 0.5);
+        }
+
+        .glass-panel-glow {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(14, 165, 233, 0.3);
+            box-shadow: 0 0 25px -5px rgba(14, 165, 233, 0.15);
+        }
+
+        /* Radar Scanning Line Animation */
+        @keyframes scanline {
+            0% { transform: translateY(-100%); }
+            100% { transform: translateY(100%); }
+        }
+        .scan-line {
+            animation: scanline 4s linear infinite;
+        }
+
+        /* Custom Range Input */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        input[type=range]:focus {
+            outline: none;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 8px;
+            cursor: pointer;
+            background: #1e293b;
+            border-radius: 4px;
+            border: 1px solid #334155;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: #38bdf8;
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -6px;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.7);
+            border: 2px solid #0f172a;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-slate-950 text-slate-200 antialiased selection:bg-cyan-500 selection:text-slate-950">
+
+    <!-- Header / Navigation Bar -->
+    <header class="border-b border-slate-800/80 bg-slate-900/90 backdrop-filter backdrop-blur-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="p-2 bg-cyan-950/80 border border-cyan-500/40 rounded-lg text-cyan-400">
+                    <i data-lucide="radar" class="w-6 h-6 animate-spin" style="animation-duration: 12s;"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                        NISAR & Sentinel-1 SAR Observatory
+                        <span class="text-xs px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800/50 font-mono">Mt. Popa, Myanmar</span>
+                    </h1>
+                    <p class="text-xs text-slate-400 font-mono">20.9167° N, 95.2333° E • Target ID: POPA-VOLCANO-SAR-09</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center space-x-4">
+                <div class="hidden md:flex items-center space-x-2 text-xs font-mono bg-slate-950 px-3 py-1.5 rounded-md border border-slate-800">
+                    <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span class="text-slate-400">NISAR Orbit:</span>
+                    <span class="text-emerald-400">L-BAND & S-BAND ACTIVE</span>
+                </div>
+                <button id="btn-info-modal" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center gap-1.5">
+                    <i data-lucide="help-circle" class="w-4 h-4"></i>
+                    <span>SAR Data Context</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- Top Context Notice Banner -->
+        <div class="glass-panel rounded-xl p-4 border-l-4 border-l-cyan-500 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div class="space-y-1">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="info" class="w-4 h-4 text-cyan-400"></i>
+                    <h3 class="text-sm font-semibold text-slate-200">Understanding Multi-Temporal SAR Data (2017–2026)</h3>
+                </div>
+                <p class="text-xs text-slate-400 leading-relaxed max-w-4xl">
+                    Because the joint NASA-ISRO <strong class="text-cyan-300">NISAR satellite</strong> launched in late 2025, continuous 7+ year historical SAR tracking (2017–2024) utilizes ESA's <strong class="text-slate-300">Sentinel-1 C-Band SAR</strong> (5.5 cm wavelength). Starting late 2025 and into 2026, high-resolution <strong class="text-cyan-300">L-Band (24 cm)</strong> canopy-penetrating radar from NISAR provides sub-canopy structural baseline data of Mount Popa's volcanic cone.
+                </p>
+            </div>
+            <div class="flex items-center gap-2 text-xs font-mono bg-slate-900/90 px-3 py-2 rounded-lg border border-slate-800 shrink-0">
+                <span class="text-cyan-400">L-Band Penetration:</span> Deep Canopy
+            </div>
+        </div>
+
+        <!-- Main Visualizer Dashboard Layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- Left / Main: Dynamic Canvas Interactive Comparison Viewer (8 Cols) -->
+            <div class="lg:col-span-8 space-y-4">
+                
+                <!-- Imagery Screen Container -->
+                <div class="glass-panel-glow rounded-xl overflow-hidden relative shadow-2xl border border-slate-800">
+                    
+                    <!-- Overlay Top Bar: Telemetry & Layer Status -->
+                    <div class="absolute top-0 left-0 right-0 z-20 p-3 bg-gradient-to-b from-slate-950/90 via-slate-950/60 to-transparent flex justify-between items-center text-xs font-mono pointer-events-none">
+                        <div class="flex items-center gap-3">
+                            <span class="px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 font-bold flex items-center gap-1.5">
+                                <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
+                                <span id="label-mode-left">SENTINEL-1 C-BAND (2017)</span>
+                            </span>
+                            <span class="text-slate-400 hidden sm:inline">VS</span>
+                            <span class="px-2 py-0.5 rounded bg-purple-950/80 border border-purple-500/40 text-purple-300 font-bold hidden sm:inline" id="label-mode-right">
+                                NISAR L/S-BAND (2026)
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-slate-400">RESOL: <span class="text-slate-200">3.5m/px</span></span>
+                            <span class="text-slate-400">POL: <span class="text-cyan-400" id="telemetry-pol">VV + VH</span></span>
+                        </div>
+                    </div>
+
+                    <!-- Canvas Viewport Box -->
+                    <div id="viewport-container" class="relative w-full h-[380px] sm:h-[480px] md:h-[540px] bg-slate-950 cursor-crosshair overflow-hidden select-none">
+                        
+                        <!-- Main Interactive HTML5 Canvas -->
+                        <canvas id="sar-canvas" class="w-full h-full block"></canvas>
+
+                        <!-- Radar Scanline Visual Effect -->
+                        <div class="absolute inset-0 pointer-events-none opacity-20 scan-line bg-gradient-to-b from-transparent via-cyan-500 to-transparent h-16 w-full"></div>
+
+                        <!-- Split Line Slider Handle Overlay -->
+                        <div id="split-slider-line" class="absolute top-0 bottom-0 w-1 bg-cyan-400/90 z-10 pointer-events-none shadow-[0_0_12px_rgba(34,211,238,0.8)]" style="left: 50%;">
+                            <div class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-cyan-950 border-2 border-cyan-400 flex items-center justify-center text-cyan-300 shadow-lg pointer-events-auto cursor-ew-resize hover:scale-110 transition-transform">
+                                <i data-lucide="chevrons-left-right" class="w-4 h-4"></i>
+                            </div>
+                        </div>
+
+                        <!-- On-Screen Controls HUD Overlay (Zoom & Grid) -->
+                        <div class="absolute bottom-4 right-4 z-20 flex flex-col gap-2">
+                            <button id="btn-toggle-grid" title="Toggle Coordinate Grid" class="p-2 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-700/70 text-slate-300 transition">
+                                <i data-lucide="grid" class="w-4 h-4"></i>
+                            </button>
+                            <button id="btn-toggle-contour" title="Toggle Volcanic Elevation Contours" class="p-2 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-700/70 text-cyan-400 transition">
+                                <i data-lucide="layers" class="w-4 h-4"></i>
+                            </button>
+                            <button id="btn-reset-view" title="Reset View" class="p-2 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-700/70 text-slate-300 transition">
+                                <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+
+                        <!-- Interactive Crosshair & Cursor Info HUD -->
+                        <div id="hud-coordinates" class="absolute bottom-4 left-4 z-20 bg-slate-950/80 border border-slate-800 px-3 py-1.5 rounded-lg text-xs font-mono text-slate-300 flex items-center gap-3 backdrop-blur-sm pointer-events-none">
+                            <span>LAT: <span id="hud-lat" class="text-cyan-400">20.9167° N</span></span>
+                            <span>LON: <span id="hud-lon" class="text-cyan-400">95.2333° E</span></span>
+                            <span>ELEV: <span id="hud-elev" class="text-emerald-400">1,518 m</span></span>
+                        </div>
+                    </div>
+
+                    <!-- Lower Control Panel Toolbar -->
+                    <div class="p-4 bg-slate-900/90 border-t border-slate-800/80 space-y-4">
+                        
+                        <!-- Timeline Range Scrub Bar & Controls -->
+                        <div class="space-y-2">
+                            <div class="flex justify-between items-center text-xs font-mono">
+                                <div class="flex items-center gap-2">
+                                    <button id="btn-play-timelapse" class="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold flex items-center gap-1.5 transition">
+                                        <i data-lucide="play" class="w-3.5 h-3.5 fill-slate-950" id="icon-play"></i>
+                                        <span id="text-play">Play 7-Year Scrub</span>
+                                    </button>
+                                    <span class="text-slate-400">Acquisition Year:</span>
+                                    <span id="label-current-year" class="text-base font-bold text-cyan-300">2026 (NISAR Baseline)</span>
+                                </div>
+                                <div class="text-slate-400 hidden sm:block">
+                                    Sensor: <span id="label-sensor-tag" class="text-emerald-400">NISAR Dual L/S-Band</span>
+                                </div>
+                            </div>
+
+                            <!-- Year Range Slider Track -->
+                            <div class="relative pt-2 pb-1">
+                                <input type="range" id="slider-timeline" min="2017" max="2026" step="1" value="2026" class="w-full">
+                                
+                                <!-- Year Markers Grid -->
+                                <div class="flex justify-between text-[10px] font-mono text-slate-500 pt-1">
+                                    <span class="cursor-pointer hover:text-cyan-400" onclick="setYear(2017)">'17 (S1)</span>
+                                    <span class="cursor-pointer hover:text-cyan-400" onclick="setYear(2019)">'19 (S1)</span>
+                                    <span class="cursor-pointer hover:text-cyan-400" onclick="setYear(2021)">'21 (S1)</span>
+                                    <span class="cursor-pointer hover:text-cyan-400" onclick="setYear(2023)">'23 (S1)</span>
+                                    <span class="cursor-pointer hover:text-cyan-400 font-bold text-cyan-400" onclick="setYear(2025)">'25 (NISAR Launch)</span>
+                                    <span class="cursor-pointer hover:text-cyan-400 font-bold text-cyan-300" onclick="setYear(2026)">'26 (NISAR Full)</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Mode & Layer Configuration Selector Controls -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800">
+                            <div>
+                                <label class="block text-[11px] font-mono text-slate-400 mb-1">RADAR VISUALIZATION MODE</label>
+                                <div class="grid grid-cols-2 gap-1.5">
+                                    <button data-mode="sar-backscatter" class="btn-mode px-2.5 py-1.5 rounded text-xs font-medium border bg-cyan-950/80 border-cyan-500 text-cyan-300 text-left truncate flex items-center justify-between">
+                                        <span>SAR Backscatter</span>
+                                        <i data-lucide="radio" class="w-3.5 h-3.5"></i>
+                                    </button>
+                                    <button data-mode="false-color" class="btn-mode px-2.5 py-1.5 rounded text-xs font-medium border border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700 text-left truncate flex items-center justify-between">
+                                        <span>Dual-Band RGB</span>
+                                        <i data-lucide="aperture" class="w-3.5 h-3.5"></i>
+                                    </button>
+                                    <button data-mode="insar-fringe" class="btn-mode px-2.5 py-1.5 rounded text-xs font-medium border border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700 text-left truncate flex items-center justify-between">
+                                        <span>InSAR Fringes</span>
+                                        <i data-lucide="waves" class="w-3.5 h-3.5"></i>
+                                    </button>
+                                    <button data-mode="optical-true" class="btn-mode px-2.5 py-1.5 rounded text-xs font-medium border border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700 text-left truncate flex items-center justify-between">
+                                        <span>Optical Ref.</span>
+                                        <i data-lucide="image" class="w-3.5 h-3.5"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-[11px] font-mono text-slate-400 mb-1">VIEWER SPLIT COMPARISON MODE</label>
+                                <div class="flex items-center gap-2 h-[68px]">
+                                    <button id="btn-toggle-split" class="flex-1 h-full rounded border border-cyan-500/50 bg-slate-950 p-2 text-left hover:bg-slate-900 transition flex flex-col justify-between">
+                                        <div class="flex justify-between items-center w-full">
+                                            <span class="text-xs font-semibold text-slate-200" id="split-btn-text">Split View: ON</span>
+                                            <i data-lucide="split" class="w-4 h-4 text-cyan-400"></i>
+                                        </div>
+                                        <span class="text-[10px] text-slate-400 font-mono">Compare 2017 Baseline vs Selected Year</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Right Sidebar: Satellite Technical Specs & Backscatter Profile (4 Cols) -->
+            <div class="lg:col-span-4 space-y-6">
+
+                <!-- Mount Popa Geophysical Specs Card -->
+                <div class="glass-panel rounded-xl p-5 border border-slate-800 space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <div class="flex items-center space-x-2">
+                            <i data-lucide="mountain-snow" class="w-5 h-5 text-amber-400"></i>
+                            <h2 class="font-bold text-slate-100 text-sm tracking-wide">Target Profile: Mt. Popa</h2>
+                        </div>
+                        <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950/80 text-amber-400 border border-amber-800/50">Extinct Stratovolcano</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3 text-xs font-mono">
+                        <div class="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/80">
+                            <span class="text-slate-500 block text-[10px]">PEAK ELEVATION</span>
+                            <span class="text-slate-200 font-semibold">1,518 meters</span>
+                        </div>
+                        <div class="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/80">
+                            <span class="text-slate-500 block text-[10px]">TAUNG KALAT PLUG</span>
+                            <span class="text-slate-200 font-semibold">737 meters</span>
+                        </div>
+                        <div class="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/80">
+                            <span class="text-slate-500 block text-[10px]">FOREST COVER</span>
+                            <span class="text-emerald-400 font-semibold">Dense Subtropical</span>
+                        </div>
+                        <div class="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/80">
+                            <span class="text-slate-500 block text-[10px]">CALDERA WIDTH</span>
+                            <span class="text-slate-200 font-semibold">1.6 km wide</span>
+                        </div>
+                    </div>
+
+                    <p class="text-xs text-slate-400 leading-relaxed">
+                        Mount Popa features a steep volcanic cone surrounded by dense tropical forest reserves. While optical satellites are often blocked by monsoonal cloud cover, SAR microwaves easily penetrate clouds to map micro-deformations and land cover changes.
+                    </p>
+                </div>
+
+                <!-- NISAR vs Sentinel-1 Wavelength Science Comparison -->
+                <div class="glass-panel rounded-xl p-5 border border-slate-800 space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <div class="flex items-center space-x-2">
+                            <i data-lucide="activity" class="w-5 h-5 text-cyan-400"></i>
+                            <h2 class="font-bold text-slate-100 text-sm tracking-wide">SAR Wavelength Spectrum</h2>
+                        </div>
+                        <span class="text-[10px] font-mono text-cyan-400">L-Band vs C-Band</span>
+                    </div>
+
+                    <!-- Interactive Radar Profile Chart -->
+                    <div>
+                        <div class="flex justify-between items-center text-xs font-mono mb-2">
+                            <span class="text-slate-400">Canopy Penetration Profile:</span>
+                        </div>
+                        <div class="h-40 relative w-full">
+                            <canvas id="profileChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Comparison Table -->
+                    <div class="space-y-2 text-xs">
+                        <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800 flex justify-between items-center">
+                            <div>
+                                <span class="font-semibold text-slate-200 block">NISAR L-Band (24 cm)</span>
+                                <span class="text-[11px] text-slate-400">Penetrates forest canopy to ground surface</span>
+                            </div>
+                            <span class="font-mono text-cyan-400 text-xs">NASA</span>
+                        </div>
+                        <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800 flex justify-between items-center">
+                            <div>
+                                <span class="font-semibold text-slate-200 block">NISAR S-Band (9.4 cm)</span>
+                                <span class="text-[11px] text-slate-400">Ideal for crops and light vegetation</span>
+                            </div>
+                            <span class="font-mono text-amber-400 text-xs">ISRO</span>
+                        </div>
+                        <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800 flex justify-between items-center">
+                            <div>
+                                <span class="font-semibold text-slate-200 block">Sentinel-1 C-Band (5.5 cm)</span>
+                                <span class="text-[11px] text-slate-400">Reflects off top of tree leaves & canopy</span>
+                            </div>
+                            <span class="font-mono text-indigo-400 text-xs">ESA</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Satellite Track Information & SweepSAR Details -->
+                <div class="glass-panel rounded-xl p-4 border border-slate-800 text-xs font-mono space-y-2">
+                    <div class="flex justify-between text-slate-400">
+                        <span>SWATH WIDTH:</span>
+                        <span class="text-slate-200">240 km (SweepSAR)</span>
+                    </div>
+                    <div class="flex justify-between text-slate-400">
+                        <span>REPEAT CYCLE:</span>
+                        <span class="text-slate-200">12 Days Exact Orbit</span>
+                    </div>
+                    <div class="flex justify-between text-slate-400">
+                        <span>REFLECTOR ANTENNA:</span>
+                        <span class="text-slate-200">12m Deployable Mesh</span>
+                    </div>
+                    <div class="flex justify-between text-slate-400">
+                        <span>INSAR PRECISION:</span>
+                        <span class="text-emerald-400">&lt; 10 mm Surface Shift</span>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Context Modal dialog -->
+    <div id="modal-info" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+        <div class="glass-panel-glow max-w-2xl w-full rounded-2xl p-6 space-y-5 border border-cyan-500/30">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <div class="flex items-center space-x-2 text-cyan-400">
+                    <i data-lucide="radar" class="w-6 h-6"></i>
+                    <h3 class="text-lg font-bold text-white">NISAR & Synthetic Aperture Radar (SAR) Context</h3>
+                </div>
+                <button id="btn-close-modal" class="text-slate-400 hover:text-white">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+
+            <div class="space-y-4 text-xs text-slate-300 leading-relaxed max-h-[70vh] overflow-y-auto pr-2">
+                <div class="p-3 bg-cyan-950/40 rounded-lg border border-cyan-800/40">
+                    <h4 class="font-semibold text-cyan-300 mb-1">Why combine Sentinel-1 (2017–2024) and NISAR (2025–2026)?</h4>
+                    <p>
+                        The joint NASA-ISRO Synthetic Aperture Radar (NISAR) satellite mission launched in July 2025. To analyze a continuous 7+ year timeline (e.g., from 2017 to present), Earth Observation scientists pair legacy C-Band SAR archives (such as Copernicus Sentinel-1) with new high-resolution NISAR L-band and S-band observations.
+                    </p>
+                </div>
+
+                <h4 class="font-bold text-white text-sm">Key Concepts in Radar Remote Sensing:</h4>
+                <ul class="list-disc pl-5 space-y-2 text-slate-300">
+                    <li><strong class="text-cyan-300">All-Weather Active Microwave:</strong> SAR emits its own radio signals rather than relying on sunlight. It sees directly through heavy cloud cover and monsoons over Myanmar.</li>
+                    <li><strong class="text-cyan-300">L-Band vs. C-Band Penetration:</strong> C-band (Sentinel-1, 5.5cm) reflects primarily off leaf canopies. NISAR's L-band (24cm) penetrates all the way through dense foliage to bounce off trunk structures and ground surfaces.</li>
+                    <li><strong class="text-cyan-300">InSAR Interferometry:</strong> By measuring microwave phase differences between two satellite passes, InSAR can track ground displacement (landslides, magma chamber inflation, or fault shifts) with millimeter accuracy.</li>
+                    <li><strong class="text-cyan-300">SweepSAR Technology:</strong> NISAR's 12-meter deployable mesh reflector allows continuous high-resolution imaging over a massive 240 km wide swath.</li>
+                </ul>
+            </div>
+
+            <div class="pt-2 flex justify-end">
+                <button id="btn-close-modal-2" class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-semibold text-xs">
+                    Close Explanation
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Engine Script -->
+    <script>
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        // Target Coordinates & Constants
+        const POPA_COORDS = { lat: 20.9167, lon: 95.2333, elev: 1518 };
+        
+        // Application State Management
+        const state = {
+            year: 2026,
+            mode: 'sar-backscatter', // 'sar-backscatter', 'false-color', 'insar-fringe', 'optical-true'
+            splitEnabled: true,
+            splitPosition: 0.5, // 0 to 1
+            isDraggingSplit: false,
+            isPlaying: false,
+            showGrid: true,
+            showContours: true,
+            zoom: 1.0,
+            panX: 0,
+            panY: 0,
+            isDraggingCanvas: false,
+            dragStartX: 0,
+            dragStartY: 0
+        };
+
+        // DOM Element Cache
+        const canvas = document.getElementById('sar-canvas');
+        const ctx = canvas.getContext('2d');
+        const viewportContainer = document.getElementById('viewport-container');
+        const splitSliderLine = document.getElementById('split-slider-line');
+        const sliderTimeline = document.getElementById('slider-timeline');
+        const labelCurrentYear = document.getElementById('label-current-year');
+        const labelSensorTag = document.getElementById('label-sensor-tag');
+        const labelModeLeft = document.getElementById('label-mode-left');
+        const labelModeRight = document.labelModeRight = document.getElementById('label-mode-right');
+        const btnPlayTimelapse = document.getElementById('btn-play-timelapse');
+        const iconPlay = document.getElementById('icon-play');
+        const textPlay = document.getElementById('text-play');
+        const btnToggleSplit = document.getElementById('btn-toggle-split');
+        const splitBtnText = document.getElementById('split-btn-text');
+
+        // Initialize Chart.js Profile
+        let profileChart = null;
+
+        function initProfileChart() {
+            const chartCtx = document.getElementById('profileChart').getContext('2d');
+            profileChart = new Chart(chartCtx, {
+                type: 'line',
+                data: {
+                    labels: ['Top Canopy', 'Upper Branch', 'Trunk Layer', 'Soil Surface', 'Bedrock'],
+                    datasets: [
+                        {
+                            label: 'NISAR L-Band (24 cm)',
+                            data: [85, 70, 45, 95, 30],
+                            borderColor: '#38bdf8',
+                            backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                            fill: true,
+                            tension: 0.4,
+                            borderWidth: 2
+                        },
+                        {
+                            label: 'Sentinel-1 C-Band (5.5 cm)',
+                            data: [95, 30, 10, 5, 2],
+                            borderColor: '#818cf8',
+                            backgroundColor: 'rgba(129, 140, 248, 0.05)',
+                            fill: true,
+                            tension: 0.4,
+                            borderWidth: 1.5,
+                            borderDash: [4, 4]
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: { color: '#94a3b8', font: { size: 10, family: 'JetBrains Mono' }, boxWidth: 12 }
+                        },
+                        tooltip: { mode: 'index', intersect: false }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#64748b', font: { size: 9, family: 'JetBrains Mono' } },
+                            grid: { color: 'rgba(51, 65, 85, 0.3)' }
+                        },
+                        y: {
+                            title: { display: true, text: 'Relative Signal Penetration (%)', color: '#64748b', font: { size: 9 } },
+                            ticks: { color: '#64748b', font: { size: 9 } },
+                            grid: { color: 'rgba(51, 65, 85, 0.3)' },
+                            min: 0,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        }
+
+        // Resize Canvas dynamically
+        function resizeCanvas() {
+            const rect = viewportContainer.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            renderScene();
+        }
+
+        // Procedural Generation of Synthetic SAR Satellite Layers for Mt. Popa
+        function drawMountPopaLayer(ctx, width, height, year, mode, isHistorical) {
+            ctx.save();
+
+            const centerX = width / 2 + state.panX;
+            const centerY = height / 2 + state.panY;
+            const radius = Math.min(width, height) * 0.38 * state.zoom;
+
+            // Background Terrain Base
+            const bgGradient = ctx.createRadialGradient(centerX, centerY, 5, centerX, centerY, width);
+            if (mode === 'sar-backscatter') {
+                bgGradient.addColorStop(0, '#1e293b');
+                bgGradient.addColorStop(0.5, '#0f172a');
+                bgGradient.addColorStop(1, '#020617');
+            } else if (mode === 'false-color') {
+                bgGradient.addColorStop(0, '#14532d');
+                bgGradient.addColorStop(0.6, '#064e3b');
+                bgGradient.addColorStop(1, '#022c22');
+            } else if (mode === 'insar-fringe') {
+                bgGradient.addColorStop(0, '#312e81');
+                bgGradient.addColorStop(0.7, '#1e1b4b');
+                bgGradient.addColorStop(1, '#0f172a');
+            } else { // Optical
+                bgGradient.addColorStop(0, '#15803d');
+                bgGradient.addColorStop(0.6, '#166534');
+                bgGradient.addColorStop(1, '#14532d');
+            }
+            ctx.fillStyle = bgGradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // Volcanic Cone Base Topography (Mt. Popa Main Crater Ridge)
+            const numRidgeRings = 14;
+            const yearFactor = (year - 2017) / 9; // 0 to 1
+
+            for (let i = numRidgeRings; i >= 1; i--) {
+                const r = (radius * (i / numRidgeRings));
+                ctx.beginPath();
+                
+                // Distorted Volcanic Rim Contour
+                const points = 64;
+                for (let p = 0; p <= points; p++) {
+                    const angle = (p / points) * Math.PI * 2;
+                    // Add procedural ridge noise
+                    const noise = Math.sin(angle * 5) * 12 + Math.cos(angle * 11) * 8 + Math.sin(angle * 3) * 15;
+                    const pr = r + noise * (i / numRidgeRings);
+                    const px = centerX + Math.cos(angle) * pr;
+                    const py = centerY + Math.sin(angle) * pr * 0.75; // Isometric compression
+
+                    if (p === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+
+                // Style based on SAR Mode
+                if (mode === 'sar-backscatter') {
+                    // C-Band (Historical) has higher speckle and lower canopy resolution than NISAR L-Band
+                    const intensity = (i / numRidgeRings);
+                    const speckleAlpha = isHistorical ? 0.35 : 0.6;
+                    ctx.fillStyle = `rgba(${Math.floor(200 * intensity)}, ${Math.floor(230 * intensity)}, ${Math.floor(255 * intensity)}, ${speckleAlpha})`;
+                    ctx.fill();
+                    if (state.showContours) {
+                        ctx.strokeStyle = `rgba(56, 189, 248, ${0.15 + (i / numRidgeRings) * 0.3})`;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                } else if (mode === 'false-color') {
+                    // NISAR Dual-Band Polarimetric Color Composite (L-HH = Red, L-HV = Green, S-VV = Blue)
+                    const rVal = Math.floor(180 * (1 - i / numRidgeRings));
+                    const gVal = Math.floor(240 * (i / numRidgeRings) + yearFactor * 15);
+                    const bVal = Math.floor(120 + i * 8);
+                    ctx.fillStyle = `rgba(${rVal}, ${gVal}, ${bVal}, 0.75)`;
+                    ctx.fill();
+                    if (state.showContours) {
+                        ctx.strokeStyle = `rgba(234, 179, 8, 0.25)`;
+                        ctx.stroke();
+                    }
+                } else if (mode === 'insar-fringe') {
+                    // InSAR Deformation Fringes (Interferometry rainbow pattern)
+                    const hue = (i * 35 + year * 20) % 360;
+                    ctx.fillStyle = `hsla(${hue}, 85%, 55%, 0.5)`;
+                    ctx.fill();
+                    ctx.strokeStyle = `hsla(${(hue + 40) % 360}, 90%, 70%, 0.8)`;
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                } else { // Optical
+                    const greenVal = Math.floor(120 + (i / numRidgeRings) * 100);
+                    ctx.fillStyle = `rgba(34, ${greenVal}, 64, 0.8)`;
+                    ctx.fill();
+                }
+            }
+
+            // Crater Center Vent Hole (Caldera Depresssion)
+            ctx.beginPath();
+            ctx.ellipse(centerX + 15, centerY - 10, radius * 0.22, radius * 0.16, 0.2, 0, Math.PI * 2);
+            ctx.fillStyle = mode === 'insar-fringe' ? '#0f172a' : (mode === 'false-color' ? '#061727' : '#040914');
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Taung Kalat Volcanic Plug (Famous monastery rock pinnacle south-west of Mt Popa)
+            const tkX = centerX - radius * 0.65;
+            const tkY = centerY + radius * 0.45;
+            const tkRadius = radius * 0.12;
+
+            ctx.beginPath();
+            ctx.arc(tkX, tkY, tkRadius, 0, Math.PI * 2);
+            ctx.fillStyle = mode === 'sar-backscatter' ? '#e0f2fe' : (mode === 'false-color' ? '#f43f5e' : '#f59e0b');
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Label for Taung Kalat Plug
+            if (state.zoom >= 0.8) {
+                ctx.fillStyle = '#f8fafc';
+                ctx.font = '10px "JetBrains Mono"';
+                ctx.fillText('Taung Kalat (737m)', tkX - 45, tkY + tkRadius + 15);
+                ctx.fillText('Mt. Popa Caldera Rim (1518m)', centerX - 60, centerY - radius * 0.75);
+            }
+
+            // Simulated Radar Speckle Noise Filter (Synthetic SAR Backscatter Effect)
+            if (mode === 'sar-backscatter') {
+                const grainDensity = isHistorical ? 600 : 250; // Sentinel-1 has more speckle noise than NISAR L-Band
+                ctx.fillStyle = '#ffffff';
+                for (let g = 0; g < grainDensity; g++) {
+                    const gx = (Math.sin(g * 99 + year) * 0.5 + 0.5) * width;
+                    const gy = (Math.cos(g * 33 + year) * 0.5 + 0.5) * height;
+                    const alpha = (Math.sin(g) * 0.5 + 0.5) * (isHistorical ? 0.3 : 0.15);
+                    ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                    ctx.fillRect(gx, gy, 1.5, 1.5);
+                }
+            }
+
+            // Draw Coordinate Grid Overlays if Enabled
+            if (state.showGrid) {
+                ctx.strokeStyle = 'rgba(51, 65, 85, 0.35)';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([4, 4]);
+
+                const gridSize = 80 * state.zoom;
+                for (let x = (state.panX % gridSize); x < width; x += gridSize) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, height);
+                    ctx.stroke();
+                }
+                for (let y = (state.panY % gridSize); y < height; y += gridSize) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(width, y);
+                    ctx.stroke();
+                }
+                ctx.setLineDash([]);
+            }
+
+            ctx.restore();
+        }
+
+        // Render Scene Master Loop
+        function renderScene() {
+            const w = canvas.width;
+            const h = canvas.height;
+
+            if (w === 0 || h === 0) return;
+
+            ctx.clearRect(0, 0, w, h);
+
+            if (!state.splitEnabled) {
+                // Render Full View of Selected Year
+                const isHist = state.year < 2025;
+                drawMountPopaLayer(ctx, w, h, state.year, state.mode, isHist);
+            } else {
+                // Split Screen Mode: Left side fixed baseline (2017 Sentinel-1), Right side Selected Year (e.g. 2026 NISAR)
+                const splitX = w * state.splitPosition;
+
+                // 1. Draw Left Side (2017 Baseline Sentinel-1 C-Band)
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(0, 0, splitX, h);
+                ctx.clip();
+                drawMountPopaLayer(ctx, w, h, 2017, state.mode, true);
+                ctx.restore();
+
+                // 2. Draw Right Side (Active Selected Year)
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(splitX, 0, w - splitX, h);
+                ctx.clip();
+                const isRightHist = state.year < 2025;
+                drawMountPopaLayer(ctx, w, h, state.year, state.mode, isRightHist);
+                ctx.restore();
+
+                // Position Split Slider Handle Overlay Line
+                splitSliderLine.style.left = `${splitX}px`;
+            }
+        }
+
+        // Year update logic
+        function setYear(y) {
+            state.year = parseInt(y);
+            sliderTimeline.value = state.year;
+            
+            // Sensor Label Updates
+            if (state.year >= 2025) {
+                labelCurrentYear.textContent = `${state.year} (NISAR Era)`;
+                labelSensorTag.textContent = "NISAR Dual L/S-Band";
+                labelSensorTag.className = "text-emerald-400 font-bold";
+                labelModeRight.textContent = `NISAR DUAL-BAND (${state.year})`;
+                document.getElementById('telemetry-pol').textContent = "L-HH / L-HV / S-VV";
+            } else {
+                labelCurrentYear.textContent = `${state.year} (Sentinel-1 Era)`;
+                labelSensorTag.textContent = "Sentinel-1 C-Band";
+                labelSensorTag.className = "text-indigo-400 font-bold";
+                labelModeRight.textContent = `SENTINEL-1 C-BAND (${state.year})`;
+                document.getElementById('telemetry-pol').textContent = "VV + VH";
+            }
+
+            renderScene();
+        }
+
+        // Timeline Scrub Animation Loop
+        let animationTimer = null;
+        function togglePlay() {
+            state.isPlaying = !state.isPlaying;
+            if (state.isPlaying) {
+                iconPlay.setAttribute('data-lucide', 'pause');
+                textPlay.textContent = "Pause Timelapse";
+                lucide.createIcons();
+
+                animationTimer = setInterval(() => {
+                    let nextYear = state.year + 1;
+                    if (nextYear > 2026) nextYear = 2017;
+                    setYear(nextYear);
+                }, 1400);
+            } else {
+                iconPlay.setAttribute('data-lucide', 'play');
+                textPlay.textContent = "Play 7-Year Scrub";
+                lucide.createIcons();
+                clearInterval(animationTimer);
+            }
+        }
+
+        // Mouse & Touch Event Handlers for Slider Drag & Pan/Zoom
+        function setupInteractions() {
+            // Split Slider Dragging
+            let isDraggingSplit = false;
+
+            const onPointerMove = (e) => {
+                const rect = viewportContainer.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+                if (isDraggingSplit) {
+                    let pos = (clientX - rect.left) / rect.width;
+                    if (pos < 0.05) pos = 0.05;
+                    if (pos > 0.95) pos = 0.95;
+                    state.splitPosition = pos;
+                    renderScene();
+                    return;
+                }
+
+                if (state.isDraggingCanvas) {
+                    state.panX += clientX - state.dragStartX;
+                    state.panY += clientY - state.dragStartY;
+                    state.dragStartX = clientX;
+                    state.dragStartY = clientY;
+                    renderScene();
+                    return;
+                }
+
+                // Update HUD Coordinate offsets based on cursor movement
+                const offsetX = (clientX - rect.left - rect.width / 2) * 0.0001;
+                const offsetY = (clientY - rect.top - rect.height / 2) * -0.0001;
+                document.getElementById('hud-lat').textContent = `${(POPA_COORDS.lat + offsetY).toFixed(4)}° N`;
+                document.getElementById('hud-lon').textContent = `${(POPA_COORDS.lon + offsetX).toFixed(4)}° E`;
+            };
+
+            const onPointerDown = (e) => {
+                const rect = viewportContainer.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+                // Check if user clicked near the split bar handle
+                const splitX = rect.width * state.splitPosition;
+                if (state.splitEnabled && Math.abs(clientX - rect.left - splitX) < 25) {
+                    isDraggingSplit = true;
+                } else {
+                    state.isDraggingCanvas = true;
+                    state.dragStartX = clientX;
+                    state.dragStartY = clientY;
+                }
+            };
+
+            const onPointerUp = () => {
+                isDraggingSplit = false;
+                state.isDraggingCanvas = false;
+            };
+
+            // Canvas & Viewport Event Listeners
+            viewportContainer.addEventListener('mousedown', onPointerDown);
+            window.addEventListener('mousemove', onPointerMove);
+            window.addEventListener('mouseup', onPointerUp);
+
+            viewportContainer.addEventListener('touchstart', onPointerDown, { passive: true });
+            window.addEventListener('touchmove', onPointerMove, { passive: true });
+            window.addEventListener('touchend', onPointerUp);
+
+            // Zoom via Mouse Wheel
+            viewportContainer.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+                state.zoom = Math.max(0.4, Math.min(3.5, state.zoom * zoomFactor));
+                renderScene();
+            }, { passive: false });
+        }
+
+        // Setup UI Controls & Mode Buttons
+        function setupUIControls() {
+            // Timeline range slider
+            sliderTimeline.addEventListener('input', (e) => {
+                setYear(parseInt(e.target.value));
+            });
+
+            // Play / Pause Button
+            btnPlayTimelapse.addEventListener('click', togglePlay);
+
+            // Visualization Mode Buttons
+            document.querySelectorAll('.btn-mode').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.btn-mode').forEach(b => {
+                        b.classList.remove('bg-cyan-950/80', 'border-cyan-500', 'text-cyan-300');
+                        b.classList.add('bg-slate-950', 'border-slate-800', 'text-slate-400');
+                    });
+                    btn.classList.remove('bg-slate-950', 'border-slate-800', 'text-slate-400');
+                    btn.classList.add('bg-cyan-950/80', 'border-cyan-500', 'text-cyan-300');
+
+                    state.mode = btn.dataset.mode;
+                    renderScene();
+                });
+            });
+
+            // Toggle Split View Mode
+            btnToggleSplit.addEventListener('click', () => {
+                state.splitEnabled = !state.splitEnabled;
+                if (state.splitEnabled) {
+                    splitSliderLine.style.display = 'block';
+                    splitBtnText.textContent = "Split View: ON";
+                    labelModeLeft.parentElement.style.display = 'flex';
+                } else {
+                    splitSliderLine.style.display = 'none';
+                    splitBtnText.textContent = "Split View: OFF";
+                    labelModeLeft.parentElement.style.display = 'none';
+                }
+                renderScene();
+            });
+
+            // HUD Toggle Buttons
+            document.getElementById('btn-toggle-grid').addEventListener('click', () => {
+                state.showGrid = !state.showGrid;
+                renderScene();
+            });
+
+            document.getElementById('btn-toggle-contour').addEventListener('click', () => {
+                state.showContours = !state.showContours;
+                renderScene();
+            });
+
+            document.getElementById('btn-reset-view').addEventListener('click', () => {
+                state.zoom = 1.0;
+                state.panX = 0;
+                state.panY = 0;
+                state.splitPosition = 0.5;
+                renderScene();
+            });
+
+            // Modal Controls
+            const modalInfo = document.getElementById('modal-info');
+            const openModal = () => modalInfo.classList.remove('hidden');
+            const closeModal = () => modalInfo.classList.add('hidden');
+
+            document.getElementById('btn-info-modal').addEventListener('click', openModal);
+            document.getElementById('btn-close-modal').addEventListener('click', closeModal);
+            document.getElementById('btn-close-modal-2').addEventListener('click', closeModal);
+        }
+
+        // Initialize Application on Window Load
+        window.onload = function() {
+            initProfileChart();
+            setupInteractions();
+            setupUIControls();
+            resizeCanvas();
+
+            window.addEventListener('resize', resizeCanvas);
+        };
+    </script>
+</body>
+</html>
